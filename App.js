@@ -1,259 +1,218 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Alert,
-  ActivityIndicator,
+  Dimensions,
+  TouchableOpacity,
+  TextInput,
+  FlatList,
 } from "react-native";
-
-import * as Google from "expo-auth-session/providers/google";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
-
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithCredential,
-  GoogleAuthProvider,
-} from "firebase/auth";
-
-import { auth } from "./firebase";
 
 WebBrowser.maybeCompleteAuthSession();
 
+const { width, height } = Dimensions.get("window");
+
+const PLAYER_WIDTH = 40;
+const PLAYER_HEIGHT = 60;
+const OBSTACLE_SIZE = 40;
+const GAME_HEIGHT = height * 0.5; // Reduced to make room for leaderboard
+
 export default function App() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [username, setUsername] = useState("");
+  const [playerX, setPlayerX] = useState(width / 2 - PLAYER_WIDTH / 2);
+  const [obstacleY, setObstacleY] = useState(0);
+  const [obstacleX, setObstacleX] = useState(Math.random() * (width - OBSTACLE_SIZE));
+  const [score, setScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [history, setHistory] = useState([]);
 
-  // 🔐 Google Login Setup
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    expoClientId: "YOUR_EXPO_CLIENT_ID",
-    androidClientId: "YOUR_ANDROID_CLIENT_ID",
-    iosClientId: "YOUR_IOS_CLIENT_ID",
-    webClientId: "YOUR_WEB_CLIENT_ID",
-  });
+  // Load history on app start
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
-  // ✅ Handle Google Login
-  React.useEffect(() => {
-    if (response?.type === "success") {
-      const { id_token } = response.params;
-      const credential = GoogleAuthProvider.credential(id_token);
-      signInWithCredential(auth, credential);
+  // Save score when game ends
+  useEffect(() => {
+    if (gameOver) {
+      saveScore();
     }
-  }, [response]);
+  }, [gameOver]);
 
-  // 📧 Email Login
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please fill all fields");
-      return;
-    }
+  const saveScore = async () => {
     try {
-      setLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      Alert.alert("Login Failed", err.message);
-    } finally {
-      setLoading(false);
+      const newEntry = {
+        id: Date.now().toString(),
+        name: username || "Guest",
+        score: score,
+        date: new Date().toLocaleDateString(),
+      };
+      const existingData = await AsyncStorage.getItem("rocket_scores");
+      const currentHistory = existingData ? JSON.parse(existingData) : [];
+      const updatedHistory = [newEntry, ...currentHistory].sort((a, b) => b.score - a.score);
+      
+      await AsyncStorage.setItem("rocket_scores", JSON.stringify(updatedHistory));
+      setHistory(updatedHistory);
+    } catch (e) {
+      console.error("Failed to save score", e);
     }
   };
 
-  // 📝 Sign Up
-  const handleSignup = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please fill all fields");
-      return;
-    }
-    try {
-      setLoading(true);
-      await createUserWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      Alert.alert("Signup Failed", err.message);
-    } finally {
-      setLoading(false);
-    }
+  const loadHistory = async () => {
+    const data = await AsyncStorage.getItem("rocket_scores");
+    if (data) setHistory(JSON.parse(data));
   };
 
-  // 🚀 Logged In Screen (Game Placeholder)
-  if (auth.currentUser) {
+  // 🎮 Game loop
+  useEffect(() => {
+    if (gameOver || !loggedIn) return;
+    const interval = setInterval(() => {
+      setObstacleY((y) => {
+        if (y > GAME_HEIGHT) {
+          setScore((s) => s + 1);
+          setObstacleX(Math.random() * (width - OBSTACLE_SIZE));
+          return 0;
+        }
+        return y + 9;
+      });
+    }, 30);
+    return () => clearInterval(interval);
+  }, [gameOver, loggedIn]);
+
+  // 💥 Collision logic
+  useEffect(() => {
+    if (!loggedIn || gameOver) return;
+    const hit =
+      obstacleY + OBSTACLE_SIZE > GAME_HEIGHT - PLAYER_HEIGHT &&
+      obstacleX < playerX + PLAYER_WIDTH &&
+      obstacleX + OBSTACLE_SIZE > playerX;
+    if (hit) setGameOver(true);
+  }, [obstacleY]);
+
+  const restartGame = () => {
+    setScore(0);
+    setObstacleY(0);
+    setObstacleX(Math.random() * (width - OBSTACLE_SIZE));
+    setPlayerX(width / 2 - PLAYER_WIDTH / 2);
+    setGameOver(false);
+  };
+
+  if (!loggedIn) {
     return (
-      <View style={styles.gameContainer}>
-        <Text style={styles.gameTitle}>🚀 Rocket Blaza</Text>
-        <Text style={styles.welcome}>
-          Welcome, {auth.currentUser.email}
-        </Text>
-
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={() => auth.signOut()}
-        >
-          <Text style={styles.logoutText}>Logout</Text>
+      <View style={login.container}>
+        <Text style={login.title}>🚀 Rocket Blaza</Text>
+        <TextInput
+          placeholder="Enter Pilot Name"
+          style={login.input}
+          onChangeText={setUsername}
+        />
+        <TouchableOpacity style={login.loginBtn} onPress={() => setLoggedIn(true)}>
+          <Text style={login.loginText}>Launch Game</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // 🔐 Login UI
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🚀 Rocket Blaza</Text>
-      <Text style={styles.subtitle}>Ignite. Dodge. Dominate.</Text>
+    <View style={game.container}>
+      <Text style={game.title}>🚀 Rocket Blaza</Text>
+      <Text style={game.score}>Score: {score}</Text>
 
-      <View style={styles.card}>
-        <TextInput
-          placeholder="Email"
-          placeholderTextColor="#999"
-          style={styles.input}
-          onChangeText={setEmail}
-          value={email}
-        />
+      <View style={game.gameArea}>
+        <View style={[game.obstacle, { top: obstacleY, left: obstacleX }]} />
+        <View style={[game.rocketContainer, { left: playerX, top: GAME_HEIGHT - PLAYER_HEIGHT }]}>
+          <View style={game.rocketBody} />
+          <View style={game.rocketTip} />
+          <View style={game.rocketFlames} />
+        </View>
+      </View>
 
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor="#999"
-          secureTextEntry
-          style={styles.input}
-          onChangeText={setPassword}
-          value={password}
-        />
-
-        {loading ? (
-          <ActivityIndicator size="large" color="#05472A" />
+      <View style={game.uiOverlay}>
+        {gameOver ? (
+          <TouchableOpacity style={game.restartBtn} onPress={restartGame}>
+            <Text style={game.restartText}>Restart Mission</Text>
+          </TouchableOpacity>
         ) : (
-          <>
-            <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-              <Text style={styles.btnText}>Login</Text>
+          <View style={game.controls}>
+            <TouchableOpacity style={game.controlBtn} onPress={() => setPlayerX(x => Math.max(0, x - 40))}>
+              <Text style={game.controlText}>◀</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.signupBtn} onPress={handleSignup}>
-              <Text style={styles.signupText}>Create Account</Text>
+            <TouchableOpacity style={game.controlBtn} onPress={() => setPlayerX(x => Math.min(width - PLAYER_WIDTH, x + 40))}>
+              <Text style={game.controlText}>▶</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              disabled={!request}
-              style={styles.googleBtn}
-              onPress={() => promptAsync()}
-            >
-              <Text style={styles.googleText}>Sign in with Google</Text>
-            </TouchableOpacity>
-          </>
+          </View>
         )}
+      </View>
+
+      {/* 🏆 SCROLLABLE LEADERBOARD */}
+      <View style={lb.container}>
+        <Text style={lb.header}>🏆 Mission History</Text>
+        <FlatList
+          data={history}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item, index }) => (
+            <View style={lb.row}>
+              <Text style={lb.rank}>#{index + 1}</Text>
+              <Text style={lb.name}>{item.name}</Text>
+              <Text style={lb.scoreVal}>{item.score}</Text>
+            </View>
+          )}
+          ListEmptyComponent={<Text style={{color: '#666', textAlign: 'center'}}>No flights recorded yet.</Text>}
+        />
       </View>
     </View>
   );
 }
 
-const EVERGREEN = "#05472A";
+// ================= NEW STYLES =================
 
-const styles = StyleSheet.create({
+const lb = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
+    width: '100%',
+    backgroundColor: '#160d2b',
     padding: 20,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
   },
+  header: { color: '#9B5CFF', fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#251a3d',
+  },
+  rank: { color: '#9B5CFF', fontWeight: 'bold', width: 40 },
+  name: { color: '#FFF', flex: 1 },
+  scoreVal: { color: '#00FFCC', fontWeight: 'bold' }
+});
 
-  title: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: EVERGREEN,
-  },
+const login = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFF", justifyContent: "center", alignItems: "center", padding: 20 },
+  title: { fontSize: 34, fontWeight: "bold", color: "#05472A", marginBottom: 20 },
+  input: { width: '80%', backgroundColor: "#F0F0F0", padding: 15, borderRadius: 12, marginBottom: 15 },
+  loginBtn: { backgroundColor: "#05472A", padding: 15, borderRadius: 12, width: '80%', alignItems: "center" },
+  loginText: { color: "#FFF", fontWeight: "bold" },
+});
 
-  subtitle: {
-    fontSize: 16,
-    color: "#555",
-    marginBottom: 30,
-  },
-
-  card: {
-    width: "100%",
-    backgroundColor: "#F9F9F9",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-
-  input: {
-    backgroundColor: "#FFF",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "#DDD",
-  },
-
-  loginBtn: {
-    backgroundColor: EVERGREEN,
-    padding: 15,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-
-  btnText: {
-    color: "#FFF",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-
-  signupBtn: {
-    marginTop: 10,
-    alignItems: "center",
-  },
-
-  signupText: {
-    color: EVERGREEN,
-    fontWeight: "600",
-  },
-
-  googleBtn: {
-    marginTop: 20,
-    backgroundColor: "#FFF",
-    padding: 15,
-    borderRadius: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: EVERGREEN,
-  },
-
-  googleText: {
-    color: EVERGREEN,
-    fontWeight: "bold",
-  },
-
-  gameContainer: {
-    flex: 1,
-    backgroundColor: EVERGREEN,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  gameTitle: {
-    fontSize: 40,
-    color: "#FFF",
-    fontWeight: "bold",
-  },
-
-  welcome: {
-    color: "#DFF5EA",
-    marginTop: 10,
-  },
-
-  logoutBtn: {
-    marginTop: 30,
-    backgroundColor: "#FFF",
-    padding: 12,
-    borderRadius: 10,
-  },
-
-  logoutText: {
-    color: EVERGREEN,
-    fontWeight: "bold",
-  },
+const game = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#0B0616", paddingTop: 50 },
+  title: { color: "#9B5CFF", fontSize: 24, fontWeight: "bold", textAlign: 'center' },
+  score: { color: "#E0D7FF", textAlign: 'center', marginBottom: 10 },
+  gameArea: { width, height: GAME_HEIGHT, backgroundColor: "#140A24", overflow: 'hidden' },
+  obstacle: { position: "absolute", width: OBSTACLE_SIZE, height: OBSTACLE_SIZE, backgroundColor: "#FF4D6D", borderRadius: 8 },
+  rocketContainer: { position: "absolute", width: PLAYER_WIDTH, height: PLAYER_HEIGHT, alignItems: "center" },
+  rocketBody: { width: 20, height: 40, backgroundColor: "#9B5CFF", borderRadius: 6 },
+  rocketTip: { width: 0, height: 0, borderLeftWidth: 10, borderRightWidth: 10, borderBottomWidth: 15, borderStyle: "solid", borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: "#9B5CFF" },
+  rocketFlames: { width: 10, height: 15, backgroundColor: "#FF9500", marginTop: -2, borderRadius: 5 },
+  uiOverlay: { height: 100, justifyContent: 'center', alignItems: 'center' },
+  controls: { flexDirection: "row" },
+  controlBtn: { backgroundColor: "#9B5CFF", padding: 15, marginHorizontal: 20, borderRadius: 50 },
+  controlText: { color: "#FFF", fontSize: 20 },
+  restartBtn: { backgroundColor: "#FF4D6D", padding: 12, borderRadius: 12 },
+  restartText: { color: "#FFF", fontWeight: "bold" },
 });

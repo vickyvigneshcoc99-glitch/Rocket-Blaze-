@@ -7,7 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "vercel-build": "expo export"
+    "build": "npx expo export:web"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -26,7 +26,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-web": "^0.21.0"
+    "react-native-web": "~0.21.0"
   },
   "private": true
 }

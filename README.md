@@ -1,6 +1,3 @@
-Here is a clean, professional README.md tailored for your repository. This version focuses on the Core Terminal and Database Management while excluding Maintenance Mode as requested.
-
-RocketBlaza 🚀
 RocketBlaza is a high-octane React Native space survival game featuring a real-time global ecosystem powered by Firebase Firestore.
 
 📋 Project Description

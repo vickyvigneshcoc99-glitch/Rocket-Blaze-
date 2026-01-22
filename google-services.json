@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "212260223073",
+    "project_id": "rocketblaza",
+    "storage_bucket": "rocketblaza.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:212260223073:android:f54fe2cac7ab2a2ccbd220",
+        "android_client_info": {
+          "package_name": "vicky.code"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC7vu4rhRObgXYr18Vez1FOMIySAqPdn14"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
